@@ -12,6 +12,7 @@ import { motion, AnimatePresence } from 'motion/react';
 const genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
 
 interface AnalysisResult {
+  isFood: boolean;
   safe: boolean;
   score: number;
   explanation: string;
@@ -93,15 +94,17 @@ export default function App() {
     const attemptAnalysis = async (modelName: string): Promise<void> => {
       try {
         const base64Data = image.split(',')[1];
-        const prompt = `Analyze this food image for safety. 
-        Check specifically for fungus, mold, rot, or any signs of spoilage.
+        const prompt = `Analyze this image. 
+        First, determine if the main object in the image is a food item.
         Return the analysis in JSON format with the following structure:
         {
-          "safe": boolean,
-          "score": number (0-100, where 100 is perfectly safe),
-          "explanation": "string explaining the findings",
-          "detectedIssues": ["string list of specific issues found, or empty if none"]
+          "isFood": boolean (true if it's food, false otherwise),
+          "safe": boolean (only relevant if isFood is true),
+          "score": number (0-100, where 100 is perfectly safe. Only relevant if isFood is true. If not food, set to 0),
+          "explanation": "string explaining the findings. If not food, explain what was seen instead (e.g., 'The main objects are a smartphone, a person')",
+          "detectedIssues": ["string list of specific issues found like fungus, mold, rot, or empty if none"]
         }
+        If it's food, check specifically for fungus, mold, rot, or any signs of spoilage.
         If fungus is detected, the score must be low (below 40). If it looks perfectly safe, the score should be high (above 90).`;
 
         const response = await genAI.models.generateContent({
@@ -352,72 +355,86 @@ export default function App() {
                   animate={{ opacity: 1, y: 0 }}
                   className="bg-white/90 backdrop-blur-xl rounded-[3rem] p-10 shadow-2xl border border-white space-y-8"
                 >
-                  <div className="flex flex-col items-center text-center">
-                    <div className="relative mb-8 pt-4">
-                      {/* Premium Score Gauge */}
-                      <svg className="w-48 h-48 transform -rotate-90">
-                        <circle
-                          cx="96" cy="96" r="88"
-                          className="stroke-slate-100 fill-none"
-                          strokeWidth="12"
-                        />
-                        <motion.circle
-                          cx="96" cy="96" r="88"
-                          className={`fill-none ${result.score > 70 ? 'stroke-emerald-500' : result.score > 40 ? 'stroke-amber-500' : 'stroke-rose-500'}`}
-                          strokeWidth="12"
-                          strokeLinecap="round"
-                          initial={{ strokeDasharray: "0 553" }}
-                          animate={{ strokeDasharray: `${(result.score / 100) * 553} 553` }}
-                          transition={{ duration: 1.5, ease: "easeOut" }}
-                        />
-                      </svg>
-                      <div className="absolute inset-0 flex flex-col items-center justify-center">
-                        <span className="text-6xl font-black text-slate-800 tracking-tighter">{result.score}</span>
-                        <span className="text-slate-400 font-bold text-sm uppercase tracking-widest">Quality</span>
+                  {result.isFood ? (
+                    <>
+                      <div className="flex flex-col items-center text-center">
+                        <div className="relative mb-8 pt-4">
+                          {/* Premium Score Gauge */}
+                          <svg className="w-48 h-48 transform -rotate-90">
+                            <circle
+                              cx="96" cy="96" r="88"
+                              className="stroke-slate-100 fill-none"
+                              strokeWidth="12"
+                            />
+                            <motion.circle
+                              cx="96" cy="96" r="88"
+                              className={`fill-none ${result.score > 70 ? 'stroke-emerald-500' : result.score > 40 ? 'stroke-amber-500' : 'stroke-rose-500'}`}
+                              strokeWidth="12"
+                              strokeLinecap="round"
+                              initial={{ strokeDasharray: "0 553" }}
+                              animate={{ strokeDasharray: `${(result.score / 100) * 553} 553` }}
+                              transition={{ duration: 1.5, ease: "easeOut" }}
+                            />
+                          </svg>
+                          <div className="absolute inset-0 flex flex-col items-center justify-center">
+                            <span className="text-6xl font-black text-slate-800 tracking-tighter">{result.score}</span>
+                            <span className="text-slate-400 font-bold text-sm uppercase tracking-widest">Quality</span>
+                          </div>
+                        </div>
+                        
+                        <motion.div
+                          initial={{ scale: 0.9, opacity: 0 }}
+                          animate={{ scale: 1, opacity: 1 }}
+                          transition={{ delay: 1 }}
+                          className={`inline-flex items-center gap-2 px-6 py-2.5 rounded-full text-sm font-black uppercase tracking-widest ${result.safe ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}
+                        >
+                          {result.safe ? <ShieldCheck className="w-4 h-4" /> : <AlertTriangle className="w-4 h-4" />}
+                          {result.safe ? 'Consumable' : 'Spoilage Detected'}
+                        </motion.div>
                       </div>
-                    </div>
-                    
-                    <motion.div
-                      initial={{ scale: 0.9, opacity: 0 }}
-                      animate={{ scale: 1, opacity: 1 }}
-                      transition={{ delay: 1 }}
-                      className={`inline-flex items-center gap-2 px-6 py-2.5 rounded-full text-sm font-black uppercase tracking-widest ${result.safe ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}
-                    >
-                      {result.safe ? <ShieldCheck className="w-4 h-4" /> : <AlertTriangle className="w-4 h-4" />}
-                      {result.safe ? 'Consumable' : 'Spoilage Detected'}
-                    </motion.div>
-                  </div>
 
-                  <div className="grid gap-6">
-                    <div className="p-6 bg-slate-50 rounded-3xl border border-slate-100">
-                      <div className="flex items-center gap-2 mb-3 text-slate-800 font-bold">
-                        <Info className="w-5 h-5 text-emerald-500" />
-                        <h4>AI Analysis Report</h4>
+                      <div className="grid gap-6">
+                        <div className="p-6 bg-slate-50 rounded-3xl border border-slate-100">
+                          <div className="flex items-center gap-2 mb-3 text-slate-800 font-bold">
+                            <Info className="w-5 h-5 text-emerald-500" />
+                            <h4>AI Analysis Report</h4>
+                          </div>
+                          <p className="text-slate-600 leading-relaxed font-medium italic">
+                            "{result.explanation}"
+                          </p>
+                        </div>
+
+                        {result.detectedIssues.length > 0 && (
+                          <div className="space-y-3 px-2">
+                            <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest pl-1">Key Findings</h4>
+                            <div className="flex flex-wrap gap-2">
+                              {result.detectedIssues.map((issue, i) => (
+                                <motion.span 
+                                  initial={{ opacity: 0, scale: 0.8 }}
+                                  animate={{ opacity: 1, scale: 1 }}
+                                  transition={{ delay: 1.2 + (i * 0.1) }}
+                                  key={i} 
+                                  className="px-4 py-2 bg-emerald-50 text-emerald-700 rounded-2xl text-sm font-bold border border-emerald-100"
+                                >
+                                  {issue}
+                                </motion.span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                       </div>
-                      <p className="text-slate-600 leading-relaxed font-medium italic">
-                        "{result.explanation}"
+                    </>
+                  ) : (
+                    <div className="text-center py-6 px-4">
+                      <div className="w-20 h-20 bg-amber-50 rounded-full flex items-center justify-center mx-auto mb-6">
+                        <AlertTriangle className="w-10 h-10 text-amber-500" />
+                      </div>
+                      <h3 className="text-2xl font-bold text-slate-800 mb-4">No Food Detected</h3>
+                      <p className="text-slate-500 mb-8 leading-relaxed">
+                        {result.explanation}. Please scan a clear photo of food instead.
                       </p>
                     </div>
-
-                    {result.detectedIssues.length > 0 && (
-                      <div className="space-y-3 px-2">
-                        <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest pl-1">Key Findings</h4>
-                        <div className="flex flex-wrap gap-2">
-                          {result.detectedIssues.map((issue, i) => (
-                            <motion.span 
-                              initial={{ opacity: 0, scale: 0.8 }}
-                              animate={{ opacity: 1, scale: 1 }}
-                              transition={{ delay: 1.2 + (i * 0.1) }}
-                              key={i} 
-                              className="px-4 py-2 bg-emerald-50 text-emerald-700 rounded-2xl text-sm font-bold border border-emerald-100"
-                            >
-                              {issue}
-                            </motion.span>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
+                  )}
 
                   <motion.button
                     whileHover={{ scale: 1.02 }}
@@ -426,7 +443,7 @@ export default function App() {
                     className="w-full bg-slate-900 hover:bg-black text-white font-black py-6 rounded-[2rem] transition-all shadow-xl shadow-slate-200 mt-4 flex items-center justify-center gap-3"
                   >
                     <RefreshCw className="w-5 h-5" />
-                    <span>New Scan</span>
+                    <span>{result.isFood ? 'New Scan' : 'Scan Another Item'}</span>
                   </motion.button>
                 </motion.div>
               )}
