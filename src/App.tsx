@@ -145,7 +145,7 @@ export default function App() {
     };
 
     try {
-      await attemptAnalysis("gemini-2.0-flash");
+      await attemptAnalysis("gemini-1.5-flash");
     } catch (err: any) {
       console.error("Primary model failed:", err);
       const errorMessage = err.message || String(err);
@@ -153,10 +153,10 @@ export default function App() {
       if (errorMessage.includes("RESOURCE_EXHAUSTED") || errorMessage.includes("quota") || errorMessage.includes("404") || errorMessage.includes("not found")) {
         console.log("Attempting fallback...");
         try {
-          await attemptAnalysis("gemini-2.0-flash-lite");
+          await attemptAnalysis("gemini-1.5-flash-8b");
         } catch (fallbackErr: any) {
           try {
-            await attemptAnalysis("gemini-1.5-flash-latest");
+            await attemptAnalysis("gemini-1.5-pro");
           } catch (finalErr: any) {
             setError(`Analysis failed: ${finalErr.message || String(finalErr)}`);
           }
