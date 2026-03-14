@@ -88,53 +88,45 @@ export default function App() {
 
     setIsAnalyzing(true);
     setError(null);
+    const model = "gemini-2.0-flash"; // Moved outside try/catch for scope
 
     const attemptAnalysis = async (modelName: string): Promise<void> => {
       try {
         const base64Data = image.split(',')[1];
-        const prompt = `Analyze this image. If it is food, check for safety (fungus, mold, rot, spoilage).
-        If it is NOT food, identify what it is and state that it's not a food item.
-        
-        CRITICAL: You MUST return a JSON object with this exact structure:
+        const prompt = `Analyze this food image for safety. 
+        Check specifically for fungus, mold, rot, or any signs of spoilage.
+        Return the analysis in JSON format with the following structure:
         {
           "safe": boolean,
-          "score": number (0-100 rating of food safety/quality; use 0 for non-food items),
-          "explanation": "detailed analysis or identity of the object",
-          "detectedIssues": ["list of issues or leave empty"]
+          "score": number (0-100, where 100 is perfectly safe),
+          "explanation": "string explaining the findings",
+          "detectedIssues": ["string list of specific issues found, or empty if none"]
         }
-        Do not include any markdown formatting like \`\`\`json. Return ONLY the JSON.`;
+        If fungus is detected, the score must be low (below 40). If it looks perfectly safe, the score should be high (above 90).`;
 
-        const model = genAI.getGenerativeModel({ 
+        const response = await genAI.models.generateContent({
           model: modelName,
-          generationConfig: {
+          contents: [
+            {
+              parts: [
+                { text: prompt },
+                {
+                  inlineData: {
+                    mimeType: "image/jpeg",
+                    data: base64Data
+                  }
+                }
+              ]
+            }
+          ],
+          config: {
             responseMimeType: "application/json"
           }
         });
 
-        const result = await model.generateContent([
-          { text: prompt },
-          {
-            inlineData: {
-              mimeType: "image/jpeg",
-              data: base64Data
-            }
-          }
-        ]);
-
-        const response = await result.response;
-        const text = response.text();
-        
+        const text = response.text;
         if (text) {
-          // Robust JSON extraction in case it's wrapped in markdown
-          const jsonMatch = text.match(/\{[\s\S]*\}/);
-          const cleanJson = jsonMatch ? jsonMatch[0] : text;
-          const parsedResult = JSON.parse(cleanJson) as AnalysisResult;
-          
-          // Ensure score is a number and always present
-          if (typeof parsedResult.score !== 'number') {
-            parsedResult.score = 0;
-          }
-          
+          const parsedResult = JSON.parse(text) as AnalysisResult;
           setResult(parsedResult);
         } else {
           throw new Error("No analysis received from AI.");
@@ -150,17 +142,27 @@ export default function App() {
       console.error("Primary model failed:", err);
       const errorMessage = err.message || String(err);
 
+      // Trigger fallback if quota reached or model not found
       if (errorMessage.includes("RESOURCE_EXHAUSTED") || errorMessage.includes("quota") || errorMessage.includes("404") || errorMessage.includes("not found")) {
-        console.log("Attempting fallback...");
+        console.log("Attempting fallback to gemini-2.0-flash-lite...");
         try {
           await attemptAnalysis("gemini-2.0-flash-lite");
         } catch (fallbackErr: any) {
+          console.log("Falling back to gemini-2.5-flash...");
           try {
-            await attemptAnalysis("gemini-1.5-flash-latest");
+            await attemptAnalysis("gemini-2.5-flash");
           } catch (finalErr: any) {
-            setError(`Analysis failed: ${finalErr.message || String(finalErr)}`);
+            console.error("All available models failed:", finalErr);
+            const finalMsg = finalErr.message || String(finalErr);
+            if (finalMsg.includes("RESOURCE_EXHAUSTED")) {
+              setError("API quota reached for all available models (Gemini 2.0 & 2.5). Please try again later.");
+            } else {
+              setError(`Analysis failed: ${finalMsg}`);
+            }
           }
         }
+      } else if (errorMessage.includes("API_KEY_INVALID")) {
+        setError("Invalid API Key. Please check your .env file.");
       } else {
         setError(`Failed to analyze: ${errorMessage}`);
       }
